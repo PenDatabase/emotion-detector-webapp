@@ -42,7 +42,13 @@ EMOTION_LABELS = ['Angry', 'Disgust', 'Fear', 'Happy', 'Neutral', 'Sad', 'Surpri
 # Load the trained model
 MODEL_PATH = 'emotion_guardian_model.h5'
 try:
-    model = keras.models.load_model(MODEL_PATH)
+    # Load with compile=False to avoid optimizer issues, then recompile
+    model = keras.models.load_model(MODEL_PATH, compile=False)
+    model.compile(
+        optimizer='adam',
+        loss='categorical_crossentropy',
+        metrics=['accuracy']
+    )
     logger.info(f"✓ Model loaded successfully from {MODEL_PATH}")
 except Exception as e:
     logger.error(f"✗ Error loading model: {e}")
