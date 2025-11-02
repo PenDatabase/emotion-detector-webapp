@@ -318,7 +318,14 @@ if __name__ == '__main__':
     
     # Run Flask app
     print("\n✓ Starting Flask server...")
-    print("✓ Open http://127.0.0.1:5000 in your browser")
+    port = int(os.environ.get('PORT', 5000))
+    debug_mode = os.environ.get('DEBUG', 'False').lower() == 'true'
+    
+    if debug_mode:
+        print("✓ Open http://127.0.0.1:5000 in your browser")
     print("=" * 60)
     
-    app.run(debug=True, host='0.0.0.0', port=5000)
+    app.run(debug=debug_mode, host='0.0.0.0', port=port)
+else:
+    # Initialize database when running with gunicorn
+    init_database()
