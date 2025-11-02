@@ -1,0 +1,333 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Emotion Detection Web App</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>🎭 Emotion Guardian</h1>
+            <p>AI-Powered Emotion Detection System</p>
+        </header>
+
+        <main>
+            <!-- User Name Input -->
+            <div class="user-input">
+                <label for="userName">Your Name:</label>
+                <input type="text" id="userName" placeholder="Enter your name" value="Anonymous">
+            </div>
+
+            <!-- Tab Navigation -->
+            <div class="tabs">
+                <button class="tab-btn active" onclick="showTab('upload')">📤 Upload Image</button>
+                <button class="tab-btn" onclick="showTab('webcam')">📷 Use Webcam</button>
+                <button class="tab-btn" onclick="showTab('history')">📊 History</button>
+            </div>
+
+            <!-- Upload Tab -->
+            <div id="uploadTab" class="tab-content active">
+                <div class="upload-section">
+                    <h2>Upload an Image</h2>
+                    <form id="uploadForm" enctype="multipart/form-data">
+                        <div class="file-input-wrapper">
+                            <input type="file" id="imageInput" name="image" accept="image/*" required>
+                            <label for="imageInput" class="file-label">
+                                <span id="fileName">Choose a file...</span>
+                            </label>
+                        </div>
+                        <button type="submit" class="btn btn-primary">Detect Emotion</button>
+                    </form>
+                    <div id="uploadPreview"></div>
+                </div>
+            </div>
+
+            <!-- Webcam Tab -->
+            <div id="webcamTab" class="tab-content">
+                <div class="webcam-section">
+                    <h2>Capture from Webcam</h2>
+                    <div class="video-container">
+                        <video id="webcam" autoplay playsinline></video>
+                        <canvas id="canvas" style="display: none;"></canvas>
+                    </div>
+                    <div class="webcam-controls">
+                        <button id="startWebcam" class="btn btn-success">Start Webcam</button>
+                        <button id="captureBtn" class="btn btn-primary" style="display: none;">Capture & Detect</button>
+                        <button id="stopWebcam" class="btn btn-danger" style="display: none;">Stop Webcam</button>
+                    </div>
+                    <div id="webcamResult"></div>
+                </div>
+            </div>
+
+            <!-- History Tab -->
+            <div id="historyTab" class="tab-content">
+                <div class="history-section">
+                    <h2>Detection History</h2>
+                    <button id="refreshHistory" class="btn btn-secondary">🔄 Refresh</button>
+                    <div id="historyContainer"></div>
+                    <div id="statsContainer"></div>
+                </div>
+            </div>
+
+            <!-- Result Display -->
+            <div id="resultDisplay" class="result-display" style="display: none;">
+                <h2>Detection Result</h2>
+                <div class="result-content">
+                    <img id="resultImage" src="" alt="Result">
+                    <div class="result-info">
+                        <p><strong>User:</strong> <span id="resultUser"></span></p>
+                        <p><strong>Emotion:</strong> <span id="resultEmotion" class="emotion-label"></span></p>
+                        <p><strong>Confidence:</strong> <span id="resultConfidence"></span>%</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Loading Spinner -->
+            <div id="loadingSpinner" class="loading" style="display: none;">
+                <div class="spinner"></div>
+                <p>Detecting emotion...</p>
+            </div>
+
+            <!-- Error Display -->
+            <div id="errorDisplay" class="error-display" style="display: none;">
+                <p id="errorMessage"></p>
+            </div>
+        </main>
+
+        <footer>
+            <p>&copy; 2025 Emotion Guardian | Covenant University Assignment</p>
+        </footer>
+    </div>
+
+    <script>
+        // Tab Switching
+        function showTab(tabName) {
+            const tabs = document.querySelectorAll('.tab-content');
+            const btns = document.querySelectorAll('.tab-btn');
+            
+            tabs.forEach(tab => tab.classList.remove('active'));
+            btns.forEach(btn => btn.classList.remove('active'));
+            
+            document.getElementById(tabName + 'Tab').classList.add('active');
+            event.target.classList.add('active');
+            
+            hideResult();
+            hideError();
+        }
+
+        // File Input Display
+        document.getElementById('imageInput').addEventListener('change', function(e) {
+            const fileName = e.target.files[0]?.name || 'Choose a file...';
+            document.getElementById('fileName').textContent = fileName;
+        });
+
+        // Upload Form Handler
+        document.getElementById('uploadForm').addEventListener('submit', async function(e) {
+            e.preventDefault();
+            
+            const formData = new FormData();
+            const imageFile = document.getElementById('imageInput').files[0];
+            const userName = document.getElementById('userName').value;
+            
+            if (!imageFile) {
+                showError('Please select an image file');
+                return;
+            }
+            
+            formData.append('image', imageFile);
+            formData.append('user_name', userName);
+            
+            showLoading();
+            hideError();
+            
+            try {
+                const response = await fetch('/upload', {
+                    method: 'POST',
+                    body: formData
+                });
+                
+                const data = await response.json();
+                hideLoading();
+                
+                if (data.success) {
+                    showResult(data);
+                } else {
+                    showError(data.error || 'Detection failed');
+                }
+            } catch (error) {
+                hideLoading();
+                showError('Network error: ' + error.message);
+            }
+        });
+
+        // Webcam Functionality
+        let webcamStream = null;
+        const webcamVideo = document.getElementById('webcam');
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+
+        document.getElementById('startWebcam').addEventListener('click', async function() {
+            try {
+                webcamStream = await navigator.mediaDevices.getUserMedia({ video: true });
+                webcamVideo.srcObject = webcamStream;
+                
+                document.getElementById('startWebcam').style.display = 'none';
+                document.getElementById('captureBtn').style.display = 'inline-block';
+                document.getElementById('stopWebcam').style.display = 'inline-block';
+            } catch (error) {
+                showError('Could not access webcam: ' + error.message);
+            }
+        });
+
+        document.getElementById('stopWebcam').addEventListener('click', function() {
+            if (webcamStream) {
+                webcamStream.getTracks().forEach(track => track.stop());
+                webcamVideo.srcObject = null;
+                
+                document.getElementById('startWebcam').style.display = 'inline-block';
+                document.getElementById('captureBtn').style.display = 'none';
+                document.getElementById('stopWebcam').style.display = 'none';
+            }
+        });
+
+        document.getElementById('captureBtn').addEventListener('click', async function() {
+            const userName = document.getElementById('userName').value;
+            
+            // Capture image from video
+            canvas.width = webcamVideo.videoWidth;
+            canvas.height = webcamVideo.videoHeight;
+            ctx.drawImage(webcamVideo, 0, 0);
+            
+            // Convert to base64
+            const imageData = canvas.toDataURL('image/jpeg');
+            
+            showLoading();
+            hideError();
+            
+            try {
+                const response = await fetch('/webcam', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        image: imageData,
+                        user_name: userName
+                    })
+                });
+                
+                const data = await response.json();
+                hideLoading();
+                
+                if (data.success) {
+                    showResult(data);
+                } else {
+                    showError(data.error || 'Detection failed');
+                }
+            } catch (error) {
+                hideLoading();
+                showError('Network error: ' + error.message);
+            }
+        });
+
+        // History Functionality
+        async function loadHistory() {
+            try {
+                const response = await fetch('/history');
+                const data = await response.json();
+                
+                const container = document.getElementById('historyContainer');
+                
+                if (data.length === 0) {
+                    container.innerHTML = '<p class="no-data">No detection history yet.</p>';
+                    return;
+                }
+                
+                let html = '<table class="history-table"><thead><tr><th>User</th><th>Emotion</th><th>Confidence</th><th>Type</th><th>Time</th></tr></thead><tbody>';
+                
+                data.forEach(item => {
+                    html += `<tr>
+                        <td>${item.user_name}</td>
+                        <td><span class="emotion-label">${item.emotion}</span></td>
+                        <td>${item.confidence.toFixed(2)}%</td>
+                        <td>${item.type}</td>
+                        <td>${new Date(item.timestamp).toLocaleString()}</td>
+                    </tr>`;
+                });
+                
+                html += '</tbody></table>';
+                container.innerHTML = html;
+                
+                // Load stats
+                loadStats();
+                
+            } catch (error) {
+                document.getElementById('historyContainer').innerHTML = '<p class="error">Failed to load history</p>';
+            }
+        }
+
+        async function loadStats() {
+            try {
+                const response = await fetch('/stats');
+                const data = await response.json();
+                
+                const container = document.getElementById('statsContainer');
+                
+                let html = '<div class="stats-box"><h3>Statistics</h3>';
+                html += `<p><strong>Total Detections:</strong> ${data.total_detections}</p>`;
+                html += '<h4>Emotion Distribution:</h4><ul>';
+                
+                for (const [emotion, count] of Object.entries(data.emotion_distribution)) {
+                    html += `<li>${emotion}: ${count}</li>`;
+                }
+                
+                html += '</ul></div>';
+                container.innerHTML = html;
+                
+            } catch (error) {
+                console.error('Failed to load stats:', error);
+            }
+        }
+
+        document.getElementById('refreshHistory').addEventListener('click', loadHistory);
+
+        // Load history when tab is shown
+        document.querySelectorAll('.tab-btn')[2].addEventListener('click', loadHistory);
+
+        // Helper Functions
+        function showResult(data) {
+            document.getElementById('resultDisplay').style.display = 'block';
+            document.getElementById('resultImage').src = data.image_url;
+            document.getElementById('resultUser').textContent = data.user_name;
+            document.getElementById('resultEmotion').textContent = data.emotion;
+            document.getElementById('resultConfidence').textContent = data.confidence;
+            
+            // Scroll to result
+            document.getElementById('resultDisplay').scrollIntoView({ behavior: 'smooth' });
+        }
+
+        function hideResult() {
+            document.getElementById('resultDisplay').style.display = 'none';
+        }
+
+        function showLoading() {
+            document.getElementById('loadingSpinner').style.display = 'block';
+        }
+
+        function hideLoading() {
+            document.getElementById('loadingSpinner').style.display = 'none';
+        }
+
+        function showError(message) {
+            document.getElementById('errorDisplay').style.display = 'block';
+            document.getElementById('errorMessage').textContent = message;
+        }
+
+        function hideError() {
+            document.getElementById('errorDisplay').style.display = 'none';
+        }
+    </script>
+</body>
+</html>
